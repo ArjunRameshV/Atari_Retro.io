@@ -20,6 +20,7 @@
         const explosion_edges = 12 // to animate the explosion
         const text_fade_time = 2.5 //seconds
         const text_size = 40 // pixels
+        const game_lives = 3 // the number fo lives you het whil eplaying the game 
             //ship
         const ship_size = 30 // size of the ship in pixel
         const turn_speed = 360 // degrees per second 
@@ -57,13 +58,15 @@
         var ctx = canva.getContext("2d");
 
         //Certain critical game variables 
-        var ship, astro, level, text, textAlpha;
+        var ship, astro, level, text, textAlpha, lives, lifelock = true;
         newGame();
 
         // the function that initiates a new game
         function newGame() {
-            // make the new ship 
+            //make the new ship 
             ship = createShip();
+            //setting up the lives 
+            lives = game_lives;
             //initialize the level
             level = 0;
             //generate the new level
@@ -98,28 +101,6 @@
             ship.destroyed = true;
         }
 
-        function createShip() {
-            return {
-                x: canva.width / 2,
-                y: canva.height / 2,
-                r: ship_size / 2,
-                a: (90 / 180) * Math.PI, //In Radians
-                rot: 0, //the instantaneous rotation speed 
-                moving: false,
-                speed: {
-                    x: 0,
-                    y: 0
-                }, // the instantaneous translation speed that changes whith acceleration 
-                destroyed: false, //state of the ship
-                explodeTime: Math.ceil(explosion_duration * fps), // the time before respawn
-                alpha_index: 1, // shows ship as a dominant charecter
-                respawn_time: 0, //time left to respawn  
-                respawn: false, // to indicate if it is respawing
-                can_shoot: true, // the laser can be fired
-                lasers: [] // a container for all the lasers
-            }
-        }
-
         //setting up the astroids 
         function createAnAstroid(x, y, d) {
             var level_difficulty = 1 + 0.1 * level;
@@ -141,6 +122,46 @@
             return astroid;
         }
 
+        function destroy_astroid(i) {
+            // console.log(astro[i].r)
+            if (astro[i].r > the_last_astroid) {
+                // creating new mini astroids 
+                astro.push(createAnAstroid(astro[i].x, astro[i].y, 2 * astro[i].r - 20));
+                astro.push(createAnAstroid(astro[i].x, astro[i].y, 2 * astro[i].r - 20));
+            }
+            //removing the current astroid
+            astro.splice(i, 1);
+
+            //to check if the player cleared a round 
+            if (astro.length == 0) {
+                level++;
+                newLevel();
+            }
+        }
+
+        function createShip() {
+            return {
+                x: canva.width / 2,
+                y: canva.height / 2,
+                r: ship_size / 2,
+                a: (90 / 180) * Math.PI, //In Radians
+                rot: 0, //the instantaneous rotation speed 
+                moving: false,
+                speed: {
+                    x: 0,
+                    y: 0
+                }, // the instantaneous translation speed that changes whith acceleration 
+                destroyed: false, //state of the ship
+                explodeTime: Math.ceil(explosion_duration * fps), // the time before respawn
+                alpha_index: 1, // shows ship as a dominant charecter
+                respawn_time: 0, //time left to respawn  
+                respawn: false, // to indicate if it is respawing
+                can_shoot: true, // the laser can be fired
+                lasers: [], // a container for all the lasers
+                dead: false // to indicate that all the lives of the ship are over
+            }
+        }
+
         //creating the lasers
         function shoot_laser() {
             //contain the number of lasers
@@ -159,23 +180,33 @@
             ship.can_shoot = false;
         }
 
-        function destroy_astroid(i) {
-            // console.log(astro[i].r)
-            if (astro[i].r > the_last_astroid) {
-                // creating new mini astroids 
-                astro.push(createAnAstroid(astro[i].x, astro[i].y, 2 * astro[i].r - 20));
-                astro.push(createAnAstroid(astro[i].x, astro[i].y, 2 * astro[i].r - 20));
-            }
-            //removing the current astroid
-            astro.splice(i, 1);
-
-            //to check if the player cleared a round 
-            if (astro.length == 0) {
-                level++;
-                newLevel();
-            }
+        function drawShip(x, y, a, color = "white") {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = ship_size / 20;
+            ctx.beginPath();
+            ctx.moveTo(
+                x + 4 / 3 * ship.r * Math.cos(a),
+                y - 4 / 3 * ship.r * Math.sin(a)
+            );
+            ctx.lineTo(
+                x - ship.r * (2 / 3 * Math.cos(a) + Math.sin(a)),
+                y + ship.r * (2 / 3 * Math.sin(a) - Math.cos(a))
+            );
+            ctx.stroke();
+            ctx.lineTo(
+                x - ship.r * (2 / 3 * Math.cos(a) - Math.sin(a)),
+                y + ship.r * (2 / 3 * Math.sin(a) + Math.cos(a))
+            );
+            ctx.closePath();
+            ctx.stroke();
         }
 
+        //the GAME OVER zone
+        function gameOver() {
+            ship.dead = true;
+            text = "GAME OVER";
+            textAlpha = 1.0;
+        }
 
         //setting up event handlers 
         document.addEventListener("keydown", keyDown);
@@ -183,6 +214,9 @@
         // these functions will be passes the keyboard action that was performed
 
         function keyDown(ev) {
+            if (ship.dead)
+                return;
+
             switch (ev.keyCode) { // the key codes are 37:LEFT, 38:UP, 39:RIGHT
                 case 37:
                     ship.rot = ((turn_speed) / 180 * Math.PI) / fps;
@@ -200,6 +234,9 @@
         }
 
         function keyUp(ev) {
+            if (ship.dead)
+                return;
+
             switch (ev.keyCode) { // the key codes are 37:LEFT, 38:UP, 39:RIGHT
                 case 37:
                     ship.rot = 0;
@@ -225,36 +262,27 @@
 
             // the entry of a new ship after a destruction
             if (ship.respawn) {
-                if (ship.respawn_time > 0) {
+                if (!lifelock) {
+                    lives--;
+                    if (lives == 0) {
+                        gameOver();
+                    }
+                    lifelock = true;
+                }
+                if (ship.respawn_time > 0 && !ship.dead) {
                     ship.alpha_index = alpha_value;
                     ship.respawn_time--;
                     //drawing the overlayed ship  
-
-                    ctx.strokeStyle = "white";
-                    ctx.lineWidth = ship_size / 20;
-                    ctx.beginPath();
-                    ctx.moveTo(
-                        ship.x + 4 / 3 * ship.r * Math.cos(ship.a),
-                        ship.y - 4 / 3 * ship.r * Math.sin(ship.a)
-                    );
-                    ctx.lineTo(
-                        ship.x - ship.r * (2 / 3 * Math.cos(ship.a) + Math.sin(ship.a)),
-                        ship.y + ship.r * (2 / 3 * Math.sin(ship.a) - Math.cos(ship.a))
-                    );
-                    ctx.stroke();
-                    ctx.lineTo(
-                        ship.x - ship.r * (2 / 3 * Math.cos(ship.a) - Math.sin(ship.a)),
-                        ship.y + ship.r * (2 / 3 * Math.sin(ship.a) + Math.cos(ship.a))
-                    );
-                    ctx.closePath();
-                    ctx.stroke();
+                    drawShip(ship.x, ship.y, ship.a);
                 } else {
                     ship.respawn = false;
                     ship.alpha_index = 1;
                 }
+
             }
 
             ctx.globalAlpha = ship.alpha_index;
+
             //to keep track of explosion 
             var exploded = ship.destroyed;
 
@@ -264,7 +292,7 @@
 
 
             //the speed variation of the ship
-            if (!exploded) {
+            if (!exploded && !ship.dead) {
                 if (ship.moving) {
                     ship.speed.x += (Math.cos(ship.a) * ship_acceleration) / fps;
                     ship.speed.y += (Math.sin(ship.a) * ship_acceleration) / fps;
@@ -337,26 +365,11 @@
 
             //making the ship in a triangular way (drawing the ship)
 
-            if (!ship.respawn) {
+            if (!ship.respawn && !ship.dead) {
                 if (!exploded) {
-                    ctx.strokeStyle = "white";
-                    ctx.lineWidth = ship_size / 20;
-                    ctx.beginPath();
-                    ctx.moveTo(
-                        ship.x + 4 / 3 * ship.r * Math.cos(ship.a),
-                        ship.y - 4 / 3 * ship.r * Math.sin(ship.a)
-                    );
-                    ctx.lineTo(
-                        ship.x - ship.r * (2 / 3 * Math.cos(ship.a) + Math.sin(ship.a)),
-                        ship.y + ship.r * (2 / 3 * Math.sin(ship.a) - Math.cos(ship.a))
-                    );
-                    ctx.stroke();
-                    ctx.lineTo(
-                        ship.x - ship.r * (2 / 3 * Math.cos(ship.a) - Math.sin(ship.a)),
-                        ship.y + ship.r * (2 / 3 * Math.sin(ship.a) + Math.cos(ship.a))
-                    );
-                    ctx.closePath();
-                    ctx.stroke();
+
+                    //draw the ship
+                    drawShip(ship.x, ship.y, ship.a);
 
                     //locating the center (for a graphical view)
                     if (display_ship_center) {
@@ -374,7 +387,6 @@
                         } else {
                             ship.lasers[i].remaining_time--;
                             if (ship.lasers[i].remaining_time > 0) {
-                                console.log("hello")
                                 ctx.fillStyle = "red";
                                 ctx.beginPath();
                                 ctx.arc(ship.lasers[i].x, ship.lasers[i].y, ship_size / 3, 0, 2 * Math.PI, false);
@@ -421,7 +433,7 @@
             // the explosion function takes the function outside the motion interation to stop any further motion 
             // as this is esential to break the game when an explosion happens
 
-            if (!exploded) {
+            if (!exploded && !ship.dead) {
                 //checking for astroid-ship collision
                 if (!ship.respawn) {
                     for (var i = 0; i < astro.length; i++) {
@@ -440,10 +452,11 @@
             } else {
                 ship.explodeTime--;
                 //resetting the game after the ship explodes
-                if (ship.explodeTime == 0) {
+                if (ship.explodeTime == 0 && !ship.dead) {
                     ship = createShip();
                     ship.respawn_time = Math.ceil(invinsibility_time * fps);
                     ship.respawn = true;
+                    lifelock = false;
                 }
             }
 
@@ -504,17 +517,25 @@
                 }
             }
 
-
             //drawing the game text for different levels
             if (textAlpha >= 0) {
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
-                ctx.fillStyle = "rgba(255,255,255" + textAlpha + ")";
+                ctx.strokeStyle = "black";
+                ctx.fillStyle = "rgba(255,255,255, " + textAlpha + ")";
                 ctx.font = "small-caps " + text_size + "px dejavu sans mono";
                 ctx.fillText(text, 0.5 * WIDTH, 0.75 * HEIGHT);
-                textAlpha -= (1 / text_fade_time / fps);
+                if (!ship.dead)
+                    textAlpha -= (1.0 / text_fade_time / fps);
+                else
+                    textAlpha -= (1.0 / text_fade_time / fps / 2);
             }
 
+            //displaying the remaining lives
+            for (var i = 0; i < lives; i++) {
+                var lifecolor = (exploded && i == lives - 1) ? "red" : "white";
+                drawShip(ship_size + i * ship_size * 1.2, ship_size, 0.5 * Math.PI, lifecolor);
+            }
             // astroid motion -- the reason for putting this here and not at astroids is to make sure that when a collision is detected
             // (can be found above the movement of the ship) the astroids must also stop moving 
 
