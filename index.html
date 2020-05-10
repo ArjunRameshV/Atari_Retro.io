@@ -21,6 +21,8 @@
         const text_fade_time = 2.5 //seconds
         const text_size = 40 // pixels
         const game_lives = 3 // the number fo lives you het whil eplaying the game 
+        const score_coeff = 120 // a coefficient to measure the score when different astroids are destroyed
+        const save_high_score = "highScore" // the local storage key to save the high score
             //ship
         const ship_size = 30 // size of the ship in pixel
         const turn_speed = 360 // degrees per second 
@@ -42,6 +44,8 @@
             //for testing
         const show_bounding_circle = false //to show the bounding circle for the objects.
         const display_ship_center = false //to show the center of the ship
+        const play_sound = true //to play animation sound effects
+        const play_music = true //to play the background music 
 
         //--------- end of constant variables 
 
@@ -57,8 +61,17 @@
         var canva = document.getElementById("gameCanvas");
         var ctx = canva.getContext("2d");
 
+        //setting up the sound effects
+        var fxLaser = new Sound("sounds/laser.m4a", 5, 0.3);
+        var fxExplode = new Sound("sounds/explode.m4a");
+        var fxHit = new Sound("sounds/hit.m4a", 2);
+        var fxThrust = new Sound("sounds/thrust.m4a");
+        //setting up back ground music 
+        var music = new Music("sounds/music-low.m4a", "sounds/music-high.m4a");
+        var astroLeft, astroTotal;
         //Certain critical game variables 
-        var ship, astro, level, text, textAlpha, lives, lifelock = true;
+        var ship, astro, level, text, textAlpha, lives, lifelock = true,
+            score, highScore;
         newGame();
 
         // the function that initiates a new game
@@ -69,6 +82,16 @@
             lives = game_lives;
             //initialize the level
             level = 0;
+            //initialize testing for highScore
+            // highScore = 100;
+            //getting the previous high score
+            var highScoreSetter = localStorage.getItem(save_high_score);
+            if (highScoreSetter == null)
+                highScore = 0;
+            else
+                highScore = parseInt(highScoreSetter);
+            //initialize the score
+            score = 0;
             //generate the new level
             newLevel();
         }
@@ -87,6 +110,9 @@
         function createAstroids() {
             astro = []; //refreshing astro after every level 
             var x, y;
+            astroTotal = (astroid_number + level);
+            astroLeft = astroid_number;
+            music.setRatio(astroLeft / astroTotal);
             for (var i = 0; i < astroid_number + level; i++) {
                 do {
                     x = Math.floor(Math.random() * WIDTH);
@@ -99,6 +125,7 @@
 
         function explode() {
             ship.destroyed = true;
+            fxExplode.play();
         }
 
         //setting up the astroids 
@@ -124,14 +151,20 @@
 
         function destroy_astroid(i) {
             // console.log(astro[i].r)
+            fxHit.play();
+            score += score_coeff / astro[i].r;
+            if (score >= highScore) {
+                highScore = score;
+                localStorage.setItem(save_high_score, highScore);
+            }
             if (astro[i].r > the_last_astroid) {
                 // creating new mini astroids 
                 astro.push(createAnAstroid(astro[i].x, astro[i].y, 2 * astro[i].r - 20));
                 astro.push(createAnAstroid(astro[i].x, astro[i].y, 2 * astro[i].r - 20));
             }
             //removing the current astroid
-            astro.splice(i, 1);
 
+            astro.splice(i, 1);
             //to check if the player cleared a round 
             if (astro.length == 0) {
                 level++;
@@ -175,6 +208,7 @@
                     target_hit: false, // made true if it hit an astroid
                     remaining_time: 0
                 });
+                fxLaser.play();
             }
             //prevent further shooting 
             ship.can_shoot = false;
@@ -207,6 +241,60 @@
             text = "GAME OVER";
             textAlpha = 1.0;
         }
+
+        //the sound effect object 
+        function Sound(src, maxStreams = 1, vol = 1.0) {
+            this.streamNumber = 0;
+            this.streams = [];
+            //inserting the souns tracks for possible multiple uses
+            for (var i = 0; i < maxStreams; i++) {
+                this.streams.push(new Audio(src));
+                this.streams[i].volume = vol;
+            }
+            //the play method 
+            this.play = function() {
+                    if (play_sound) {
+                        this.streamNumber = (this.streamNumber + 1) % maxStreams;
+                        this.streams[this.streamNumber].play();
+                    }
+                }
+                //the stop method
+            this.stop = function() {
+                this.streams[this.streamNumber].pause();
+                this.streams[this.streamNumber].currentTime = 0;
+            }
+        }
+
+        //the background music object
+        function Music(src_low, src_high) {
+            this.soundL = new Audio(src_low);
+            this.soundH = new Audio(src_high);
+            this.low = true;
+            this.tempo = 1.0; // the seconds per beat
+            this.beatTime = 0; // frames left till next beat
+            this.playing = function() {
+                if (play_music) {
+                    if (this.low) {
+                        this.soundL.play()
+                    } else {
+                        this.soundH.play();
+                    }
+                    this.low = (!this.low);
+                }
+            }
+            this.setRatio = function(ratio) {
+                this.tempo = 1.0 - 0.75 * (1.0 - ratio);
+            }
+            this.tick = function() {
+                if (this.beatTime == 0) {
+                    this.playing();
+                    this.beatTime = Math.ceil(this.tempo * fps);
+                } else {
+                    this.beatTime--;
+                }
+            }
+        }
+
 
         //setting up event handlers 
         document.addEventListener("keydown", keyDown);
@@ -260,6 +348,9 @@
 
         function update() {
 
+            //tick the music
+            music.tick();
+
             // the entry of a new ship after a destruction
             if (ship.respawn) {
                 if (!lifelock) {
@@ -273,6 +364,7 @@
                     ship.alpha_index = alpha_value;
                     ship.respawn_time--;
                     //drawing the overlayed ship  
+                    fxExplode.stop();
                     drawShip(ship.x, ship.y, ship.a);
                 } else {
                     ship.respawn = false;
@@ -294,6 +386,7 @@
             //the speed variation of the ship
             if (!exploded && !ship.dead) {
                 if (ship.moving) {
+                    fxThrust.play();
                     ship.speed.x += (Math.cos(ship.a) * ship_acceleration) / fps;
                     ship.speed.y += (Math.sin(ship.a) * ship_acceleration) / fps;
 
@@ -322,6 +415,7 @@
 
 
                 } else {
+                    fxThrust.stop();
                     ship.speed.x -= (friction * ship.speed.x) / fps;
                     ship.speed.y -= (friction * ship.speed.y) / fps;
                 }
@@ -364,7 +458,6 @@
             }
 
             //making the ship in a triangular way (drawing the ship)
-
             if (!ship.respawn && !ship.dead) {
                 if (!exploded) {
 
@@ -430,6 +523,7 @@
 
                 }
             }
+
             // the explosion function takes the function outside the motion interation to stop any further motion 
             // as this is esential to break the game when an explosion happens
 
@@ -521,7 +615,7 @@
             if (textAlpha >= 0) {
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
-                ctx.strokeStyle = "black";
+                // ctx.strokeStyle = "black";
                 ctx.fillStyle = "rgba(255,255,255, " + textAlpha + ")";
                 ctx.font = "small-caps " + text_size + "px dejavu sans mono";
                 ctx.fillText(text, 0.5 * WIDTH, 0.75 * HEIGHT);
@@ -529,6 +623,8 @@
                     textAlpha -= (1.0 / text_fade_time / fps);
                 else
                     textAlpha -= (1.0 / text_fade_time / fps / 2);
+            } else if (ship.dead && textAlpha < 0) {
+                newGame();
             }
 
             //displaying the remaining lives
@@ -536,6 +632,21 @@
                 var lifecolor = (exploded && i == lives - 1) ? "red" : "white";
                 drawShip(ship_size + i * ship_size * 1.2, ship_size, 0.5 * Math.PI, lifecolor);
             }
+
+            //displaying the current score
+            ctx.textAlign = "right";
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = "white";
+            ctx.font = text_size + "px dejavu sans mono";
+            ctx.fillText(score, WIDTH - ship_size / 2, ship_size);
+
+            //display the high score
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = "white";
+            ctx.font = text_size + "px dejavu sans mono";
+            ctx.fillText(highScore, WIDTH / 2, ship_size);
+
             // astroid motion -- the reason for putting this here and not at astroids is to make sure that when a collision is detected
             // (can be found above the movement of the ship) the astroids must also stop moving 
 
