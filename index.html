@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Atari</title>
     <style></style>
+    <script type="text/javascript" src="./automation.js"></script>
 </head>
 
 <body>
@@ -44,8 +45,14 @@
             //for testing
         const show_bounding_circle = false //to show the bounding circle for the objects.
         const display_ship_center = false //to show the center of the ship
-        const play_sound = true //to play animation sound effects
-        const play_music = true //to play the background music 
+        const play_sound = false //to play animation sound effects
+        const play_music = false //to play the background music 
+            //for automation 
+        const automate_game = true //runs the game on the neural netwrok 
+        const input_number = 2
+        const hidden_layers = 5
+        const output_number = 1
+        const sample_number = 10000 //to train the model 
 
         //--------- end of constant variables 
 
@@ -73,6 +80,27 @@
         var ship, astro, level, text, textAlpha, lives, lifelock = true,
             score, highScore;
         newGame();
+
+        if (automate_game) {
+            //automating things 
+            var nn = new neuralNetwork(input_number, hidden_layers, output_number);
+
+            //testing for XOR principle
+            for (let i = 0; i < sample_number; i++) {
+                var target_input0 = Math.round(Math.random());
+                var target_input1 = Math.round(Math.random());
+                var target_output = (target_input1 == target_input0) ? 0 : 1;
+
+                nn.train([target_input0, target_input1], [target_output]);
+            }
+
+            // //testing our model 
+            // console.log("0, 0 : ", nn.feedForward([0, 0]).data);
+            // console.log("0, 1 : ", nn.feedForward([0, 1]).data);
+            // console.log("1, 0 : ", nn.feedForward([1, 0]).data);
+            // console.log("1, 1 : ", nn.feedForward([1, 1]).data);
+
+        }
 
         // the function that initiates a new game
         function newGame() {
@@ -295,6 +323,12 @@
             }
         }
 
+        //automate the game 
+        function automate() {
+            if (automate_game) {
+                //TODO;
+            }
+        }
 
         //setting up event handlers 
         document.addEventListener("keydown", keyDown);
@@ -302,7 +336,7 @@
         // these functions will be passes the keyboard action that was performed
 
         function keyDown(ev) {
-            if (ship.dead)
+            if (ship.dead || automate_game)
                 return;
 
             switch (ev.keyCode) { // the key codes are 37:LEFT, 38:UP, 39:RIGHT
@@ -322,7 +356,7 @@
         }
 
         function keyUp(ev) {
-            if (ship.dead)
+            if (ship.dead || automate_game)
                 return;
 
             switch (ev.keyCode) { // the key codes are 37:LEFT, 38:UP, 39:RIGHT
